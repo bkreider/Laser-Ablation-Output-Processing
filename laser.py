@@ -6,16 +6,32 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+# Move magic numbers to Globals
+
+ELEMENTS = dict(
+	Ba138 = 137.327,
+	Ca46  =  40.078,
+	Mg24  =  24.305,
+	Sr87  =  87.62,
+)
+
+COMMON_DIVALENTS=['Ca43','Ba138','Sr88']
+
 ## data, subdata = 
-def read_file(filename):
+def read_file(filename, divalents_list=None):
 	"""
 		Data is used in various places within the module.  In some cases, analyte list is very long
 		and needs to be truncated for easy use.  Here, common divalents are used.  Hard code as needed
 		for now.  Will look into selection of check boxes using a checkbox widget in the future.
 	"""
+	if divalents_list is not None:
+		divalents = divalents_list
+	else:
+		divalents = COMMON_DIVALENTS
+	
 	data = pd.read_csv(filename, header=1)
 	subdata = pd.read_csv(filename, header=1)
-	subdata = subdata[['Ca43','Ba138','Sr88']]
+	subdata = subdata[divalents]
 	return (data, subdata)
 
 ## data, subdata =
@@ -27,9 +43,17 @@ def pick_gasblank(data, subdata):
 	"""
 	subdata.plot(legend=False, logy=True)
 	txt = plt.title('Gas Blank - pick two points')
-	xy = ginput(2,timeout=30)
-	x1=xy[0][0]
-	x2=xy[1][0]
+	
+	# don't timeout
+	xy = ginput(2,timeout=0)
+	try:
+		x1=xy[0][0]
+		x2=xy[1][0]
+	except IndexError:
+		# Catch bad xy input
+		print("You failed to click 2 points within the 30 second timeout")
+		raise
+	
 	gas_blank = data.ix[x1:x2]
 	plt.close("all")
 	return gas_blank
@@ -70,6 +94,9 @@ def main():
 		data, subdata = read_file(filename)
 		gas_blank = pick_gasblank(data, subdata)
 		const_data = pick_data(data, subdata)
+		
+		# Simplfy the rest of this or hide functional components in functions
+		
 		means = gas_blank.mean()
 		means['Time in Seconds '] = 0
 		subt_signal = const_data - means
@@ -81,6 +108,13 @@ def main():
 		cal_signal['Time in Seconds '] = cal_signal['Time in Seconds '] - TiS.min(0)
 		cal_signal['Time in Seconds '] = cal_signal['Time in Seconds ']*15
 		cal_signal = cal_signal.rename(columns={'Time in Seconds ': 'um from core'})
+		
+		# This is busy-work.  This should be moved into a function
+		# The function can work based on a global dictionary of lookup values
+		# def calibrate(sample_name, normalizing_name, cal_signal):
+		#    return ((cal_signal[sample_name]/cal_signal[normalizing_name]) *
+		#                 ( ELEMENTS[normalizing_name]/ ELEMENTS[sample_name]) * 1000000)
+		
 		df_ratios = pd.DataFrame({'um from Core' : cal_signal['um from core'],
 			'Ba/Ca' : (cal_signal['Ba138']/cal_signal['Ca46'])*(40.078/137.327)*1000000,
 			'Sr/Ca' : (cal_signal['Sr87']/cal_signal['Ca46'])*(40.078/87.62)*1000000,
